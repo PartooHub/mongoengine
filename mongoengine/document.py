@@ -10,6 +10,7 @@ from mongoengine import signals
 from mongoengine.base import (BaseDict, BaseDocument, BaseList,
                               DocumentMetaclass, EmbeddedDocumentList,
                               TopLevelDocumentMetaclass, get_document)
+from mongoengine.base.field_void_operators import IGNORE, RESET_DEFAULT
 from mongoengine.common import _import_class
 from mongoengine.connection import DEFAULT_CONNECTION_NAME, get_db
 from mongoengine.context_managers import switch_collection, switch_db
@@ -78,6 +79,18 @@ class EmbeddedDocument(BaseDocument):
 
     def __ne__(self, other):
         return not self.__eq__(other)
+
+    def modify(self, value):
+        for k, field in self._fields.items():
+            v = getattr(value, k)
+            if isinstance(field, EmbeddedDocument):
+                field.modify(v)
+            elif v is RESET_DEFAULT:
+                setattr(self, k, field.default)
+            elif v is IGNORE:
+                pass
+            else:
+                setattr(self, k, v)
 
     def to_mongo(self, *args, **kwargs):
         data = super(EmbeddedDocument, self).to_mongo(*args, **kwargs)
