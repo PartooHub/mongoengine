@@ -80,17 +80,10 @@ class EmbeddedDocument(BaseDocument):
     def __ne__(self, other):
         return not self.__eq__(other)
 
-    def modify(self, value):
+    def modify(self, update):
         for k, field in self._fields.items():
-            v = getattr(value, k)
-            if isinstance(field, EmbeddedDocument):
-                field.modify(v)
-            elif v is RESET_DEFAULT:
-                setattr(self, k, field.default)
-            elif v is IGNORE:
-                pass
-            else:
-                setattr(self, k, v)
+            setattr(self, k, self._fields[k].modify(getattr(update, k), initial_value=getattr(self, k)))
+        return self
 
     def to_mongo(self, *args, **kwargs):
         data = super(EmbeddedDocument, self).to_mongo(*args, **kwargs)
@@ -166,6 +159,17 @@ class Document(BaseDocument):
     __metaclass__ = TopLevelDocumentMetaclass
 
     __slots__ = ('__objects',)
+
+    def get(self, item, default=None):
+        # FIXME : legacy support
+        return getattr(self, item, default)
+
+    def to_json_dict(self):
+        json_dict = self.to_mongo().to_dict()
+        json_dict["id"] = str(self.id)
+        if json_dict.get("_id") is not None:
+            del json_dict["_id"]
+        return json_dict
 
     @property
     def pk(self):
@@ -265,7 +269,36 @@ class Document(BaseDocument):
 
         return data
 
-    def modify(self, query=None, **update):
+    def modify(self, save=True, force_insert=False, validate=True, clean=True,
+               write_concern=None, cascade=None, cascade_kwargs=None,
+               _refs=None, save_condition=None, **update):
+        """
+        Modify object by setting attributes
+        :param update: dict: {<name of the property>: Field counterpart (either type or instance of EmbeddedField)}
+        :param save: save object after modifying
+        :param force_insert: save param
+        :param validate: save param
+        :param clean: save param
+        :param _refs: save param
+        :param save_condition: save param
+        :param write_concern: save param
+        :param cascade: save param
+        :param cascade_kwargs: save param
+        """
+        for k, v in update.items():
+            setattr(self, k, self._fields[k].modify(v, initial_value=getattr(self, k)))
+        if save:
+            self.save(force_insert=force_insert,
+                      validate=validate,
+                      clean=clean,
+                      write_concern=write_concern,
+                      cascade=cascade,
+                      cascade_kwargs=cascade_kwargs,
+                      _refs=_refs,
+                      save_condition=save_condition)
+        return self
+
+    def old_modify(self, query=None, **update):
         """Perform an atomic update of the document in the database and reload
         the document object using updated version.
 

@@ -6,6 +6,7 @@ from bson import DBRef, ObjectId, SON
 import pymongo
 import six
 
+from mongoengine.base.field_void_operators import IGNORE, RESET_DEFAULT
 from mongoengine.base.common import UPDATE_OPERATORS
 from mongoengine.base.datastructures import (BaseDict, BaseList,
                                              EmbeddedDocumentList)
@@ -231,6 +232,14 @@ class BaseField(object):
                                  'callable.' % self.name)
 
         self.validate(value, **kwargs)
+
+    def modify(self, value, initial_value=None):
+        if value is RESET_DEFAULT:
+            return self.default
+        elif value is IGNORE or value == [] or value is None or value == {}:
+            return initial_value
+        else:
+            return value
 
     @property
     def owner_document(self):

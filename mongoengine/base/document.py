@@ -15,6 +15,7 @@ from mongoengine.base.datastructures import (BaseDict, BaseList,
                                              EmbeddedDocumentList,
                                              StrictDict)
 from mongoengine.base.fields import ComplexBaseField
+from mongoengine.base.field_void_operators import SpreadObject
 from mongoengine.common import _import_class
 from mongoengine.errors import (FieldDoesNotExist, InvalidDocumentError,
                                 LookUpError, OperationError, ValidationError)
@@ -110,7 +111,7 @@ class BaseDocument(object):
                 if key in self._fields or key in ('id', 'pk', '_cls'):
                     if __auto_convert and value is not None:
                         field = self._fields.get(key)
-                        if field and not isinstance(field, FileField):
+                        if field and not isinstance(field, FileField) and not isinstance(value, SpreadObject):
                             value = field.to_python(value)
                     setattr(self, key, value)
                 else:

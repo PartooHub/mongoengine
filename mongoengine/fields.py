@@ -7,6 +7,7 @@ import time
 import uuid
 import warnings
 from operator import itemgetter
+from itertools import product
 
 from bson import Binary, DBRef, ObjectId, SON
 import gridfs
@@ -33,6 +34,7 @@ from mongoengine.document import Document, EmbeddedDocument
 from mongoengine.errors import DoesNotExist, InvalidQueryError, ValidationError
 from mongoengine.python_support import StringIO
 from mongoengine.queryset import DO_NOTHING, QuerySet
+from mongoengine.base.field_void_operators import IGNORE, RESET_DEFAULT
 
 try:
     from PIL import Image, ImageOps
@@ -52,7 +54,8 @@ __all__ = (
     'FileField', 'ImageGridFsProxy', 'ImproperlyConfigured', 'ImageField',
     'GeoPointField', 'PointField', 'LineStringField', 'PolygonField',
     'SequenceField', 'UUIDField', 'MultiPointField', 'MultiLineStringField',
-    'MultiPolygonField', 'GeoJsonBaseField'
+    'MultiPolygonField', 'GeoJsonBaseField', 'MinuteField', 'HourField',
+    'TimeField', 'TimeWindowField', 'TimeWindowListField', 'DateTimeStringField'
 )
 
 RECURSIVE_REFERENCE_CONSTANT = 'self'
@@ -139,6 +142,8 @@ class URLField(StringField):
         super(URLField, self).__init__(**kwargs)
 
     def validate(self, value):
+        if value == '':
+            return True
         # Check first if the scheme is valid
         scheme = value.split('://')[0].lower()
         if scheme not in self.schemes:
@@ -234,6 +239,8 @@ class EmailField(StringField):
         return False
 
     def validate(self, value):
+        if value == '':
+            return True
         super(EmailField, self).validate(value)
 
         if '@' not in value:
@@ -622,6 +629,16 @@ class EmbeddedDocumentField(BaseField):
 
         self.document_type_obj = document_type
         super(EmbeddedDocumentField, self).__init__(**kwargs)
+
+    def modify(self, value, initial_value=None):
+        if value is RESET_DEFAULT:
+            return self.default
+        elif value is IGNORE:
+            return initial_value
+        elif initial_value is None:
+            return value
+        else:
+            return initial_value.modify(value)
 
     @property
     def document_type(self):
@@ -2344,3 +2361,140 @@ class GenericLazyReferenceField(GenericReferenceField):
             ))
         else:
             return super(GenericLazyReferenceField, self).to_mongo(document)
+
+
+class MinuteField(StringField):
+    name = "minutes"
+
+    def validate(self, value, **kwargs):
+        super(MinuteField, self).validate(value)
+
+        if not value.isdigit():
+            self.error('must_be_numbers')
+
+        if int(value) > 59:
+            self.error('superior_to_59')
+
+
+class HourField(StringField):
+    name = "hours"
+
+    def validate(self, value, **kwargs):
+        super(HourField, self).validate(value)
+
+        if not value.isdigit():
+            self.error('must_be_numbers')
+
+        if int(value) > 23:
+            self.error('superior_to_23')
+
+
+# FIXME: TimeField should not be StringField but composed of NestedFields
+class TimeField(StringField):
+    """
+    Represents one time field: "09:00"
+    """
+    field_name = "time_field"
+
+    TIME_SEPARATOR = ":"
+
+    @staticmethod
+    def _get_seconds(time_):
+        hours, min = time_.split(TimeField.TIME_SEPARATOR)
+        return int(hours) * 3600 + int(min) * 60
+
+    def clean(self, value):
+        return value
+
+    def validate(self, value, **kwargs):
+        super(TimeField, self).validate(value)
+
+        errors = {}
+
+        hours, minutes = value.split(TimeField.TIME_SEPARATOR)
+
+        try:
+            HourField().validate(hours)
+        except ValidationError as e:
+            errors[e.field_name] = e
+
+        try:
+            MinuteField().validate(minutes)
+        except ValidationError as e:
+            errors[e.field_name] = e
+
+        if errors:
+            raise ValidationError(**{
+                "errors": errors,
+                "field_name": kwargs.get("field_name")
+            })
+
+
+class TimeWindowField(StringField):
+    """
+    Represent one time window: "09:00-12:00"
+    """
+    name = "time_window"
+    TIME_WINDOW_SEPARATOR = "-"
+    MIDNIGHT_START_TIME = "00:00"
+    MIDNIGHT_END_TIME = "00:00"
+
+    def clean(self, value):
+        return value
+
+    def validate(self, value, **kwargs):
+        super(TimeWindowField, self).validate(value)
+
+        errors = {}
+
+        start_time, end_time = value.split(TimeWindowField.TIME_WINDOW_SEPARATOR)
+        try:
+            TimeField().validate(start_time, field_name="start_time")
+        except ValidationError as e:
+            errors[e.field_name] = e.errors
+
+        try:
+            TimeField().validate(end_time, field_name="end_time")
+        except ValidationError as e:
+            errors[e.field_name] = e.errors
+
+        if errors: raise ValidationError(**{"errors": errors})
+
+        if TimeField._get_seconds(start_time) > TimeField._get_seconds(end_time) \
+                and end_time != self.MIDNIGHT_END_TIME:
+            self.error("start_time_is_superior")
+
+
+class TimeWindowListField(ListField):
+    """
+    Represent a list of time windows: ["09:00-12:00", "14:00-19:00"]
+    """
+    name = "time_window_list"
+
+    def validate(self, value, **kwargs):
+        super(TimeWindowListField, self).validate(value)  # let raise more atomic errors
+
+        # if nothing has been raised yet, check overlapping windows
+        windows_seconds = []  # [(123, 342)] st1, st2
+        start_time_seconds = []
+
+        for window in value:
+            start_time, end_time = window.split(TimeWindowField.TIME_WINDOW_SEPARATOR)
+            windows_seconds.append((TimeField._get_seconds(start_time), TimeField._get_seconds(end_time)))
+            start_time_seconds.append(TimeField._get_seconds(start_time))
+
+        for couple in product(start_time_seconds, windows_seconds):
+            cur_start_time, cur_window = couple
+            if cur_window[0] < cur_start_time < cur_window[1]:
+                self.error("hour_windows_overlapping_somewhere")
+
+
+class DateTimeStringField(StringField):
+    _DATETIME_REGEX = re.compile(r'^\d{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[1-2]\d|3[0-1])$', re.IGNORECASE)
+
+    def validate(self, value, **kwargs):
+        super(DateTimeStringField, self).validate(value)
+
+        if not self._DATETIME_REGEX.match(value):
+            self.error("datetime_string_invalid")
+
