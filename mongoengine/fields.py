@@ -632,7 +632,7 @@ class EmbeddedDocumentField(BaseField):
 
     def modify(self, value, initial_value=None):
         if value is RESET_DEFAULT:
-            return self.default
+            return self.default() if callable(self.default) else self.default
         elif value is IGNORE:
             return initial_value
         elif initial_value is None:

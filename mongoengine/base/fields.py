@@ -235,8 +235,8 @@ class BaseField(object):
 
     def modify(self, value, initial_value=None):
         if value is RESET_DEFAULT:
-            return self.default
-        elif value is IGNORE or value == [] or value is None or value == {}:
+            return self.default() if callable(self.default) else self.default
+        elif value is IGNORE:
             return initial_value
         else:
             return value
