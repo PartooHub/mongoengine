@@ -233,7 +233,7 @@ class BaseField(object):
 
         self.validate(value, **kwargs)
 
-    def modify(self, value, initial_value=None):
+    def merge(self, value, initial_value=None):
         if value is RESET_DEFAULT:
             return self.default() if callable(self.default) else self.default
         elif value is IGNORE:

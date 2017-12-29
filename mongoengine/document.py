@@ -80,9 +80,9 @@ class EmbeddedDocument(BaseDocument):
     def __ne__(self, other):
         return not self.__eq__(other)
 
-    def modify(self, update):
+    def merge(self, update):
         for k, field in self._fields.items():
-            setattr(self, k, self._fields[k].modify(getattr(update, k), initial_value=getattr(self, k)))
+            setattr(self, k, self._fields[k].merge(getattr(update, k), initial_value=getattr(self, k)))
         return self
 
     def to_mongo(self, *args, **kwargs):
@@ -269,9 +269,9 @@ class Document(BaseDocument):
 
         return data
 
-    def modify(self, save=True, force_insert=False, validate=True, clean=True,
-               write_concern=None, cascade=None, cascade_kwargs=None,
-               _refs=None, save_condition=None, **update):
+    def merge(self, save=True, force_insert=False, validate=True, clean=True,
+              write_concern=None, cascade=None, cascade_kwargs=None,
+              _refs=None, save_condition=None, **update):
         """
         Modify object by setting attributes
         :param update: dict: {<name of the property>: Field counterpart (either type or instance of EmbeddedField)}
@@ -286,7 +286,7 @@ class Document(BaseDocument):
         :param cascade_kwargs: save param
         """
         for k, v in update.items():
-            setattr(self, k, self._fields[k].modify(v, initial_value=getattr(self, k)))
+            setattr(self, k, self._fields[k].merge(v, initial_value=getattr(self, k)))
         if save:
             self.save(force_insert=force_insert,
                       validate=validate,
@@ -298,7 +298,7 @@ class Document(BaseDocument):
                       save_condition=save_condition)
         return self
 
-    def old_modify(self, query=None, **update):
+    def modify(self, query=None, **update):
         """Perform an atomic update of the document in the database and reload
         the document object using updated version.
 

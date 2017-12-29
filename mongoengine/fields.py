@@ -630,7 +630,7 @@ class EmbeddedDocumentField(BaseField):
         self.document_type_obj = document_type
         super(EmbeddedDocumentField, self).__init__(**kwargs)
 
-    def modify(self, value, initial_value=None):
+    def merge(self, value, initial_value=None):
         if value is RESET_DEFAULT:
             return self.default() if callable(self.default) else self.default
         elif value is IGNORE:
@@ -638,7 +638,7 @@ class EmbeddedDocumentField(BaseField):
         elif initial_value is None:
             return value
         else:
-            return initial_value.modify(value)
+            return initial_value.merge(value)
 
     @property
     def document_type(self):
