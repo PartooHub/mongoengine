@@ -280,7 +280,12 @@ class BaseDocument(object):
         a particular field; it will have a special-case association with the
         field defined by NON_FIELD_ERRORS.
         """
-        pass
+        for k, v in self._fields.items():
+            property_value = getattr(self, k)
+            if hasattr(v, "clean"):
+                setattr(self, k, v.clean(property_value))
+            elif hasattr(property_value, "clean"):
+                property_value.clean()
 
     def get_text_score(self):
         """

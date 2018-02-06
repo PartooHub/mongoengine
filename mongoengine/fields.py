@@ -805,6 +805,12 @@ class ListField(ComplexBaseField):
             self.error('Only lists and tuples may be used in a list field')
         super(ListField, self).validate(value)
 
+    def clean(self, value):
+        if hasattr(self.field, 'clean'):
+            return [self.field.clean(x) for x in value]
+        else:
+            return value
+
     def prepare_query_value(self, op, value):
         if self.field:
 
