@@ -793,8 +793,10 @@ class ListField(ComplexBaseField):
         Required means it cannot be empty - as the default for ListFields is []
     """
 
-    def __init__(self, field=None, **kwargs):
+    def __init__(self, field=None, min_length=None, max_length=None, **kwargs):
         self.field = field
+        self.max_length = max_length
+        self.min_length = min_length
         kwargs.setdefault('default', lambda: [])
         super(ListField, self).__init__(**kwargs)
 
@@ -803,6 +805,12 @@ class ListField(ComplexBaseField):
         if (not isinstance(value, (list, tuple, QuerySet)) or
                 isinstance(value, six.string_types)):
             self.error('Only lists and tuples may be used in a list field')
+        if self.max_length is not None and len(value) > self.max_length:
+            self.error('List value is too long')
+
+        if self.min_length is not None and len(value) < self.min_length:
+            self.error('List value is too short')
+
         super(ListField, self).validate(value)
 
     def clean(self, value):
@@ -850,6 +858,16 @@ class EmbeddedDocumentListField(ListField):
         super(EmbeddedDocumentListField, self).__init__(
             field=EmbeddedDocumentField(document_type), **kwargs
         )
+
+    def clean(self, value):
+        if hasattr(self.field, 'clean'):
+            return [self.field.clean(x) for x in value]
+        elif hasattr(self.field.document_type, 'clean'):
+            for x in value:
+                x.clean()
+            return value
+        else:
+            return value
 
 
 class SortedListField(ListField):
